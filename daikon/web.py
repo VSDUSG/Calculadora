@@ -7,12 +7,13 @@ import secrets
 import time
 import uuid
 
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, database, pdf_laudo
 from .dicom_server import novo_study_uid
+from .recebimento import registrar_dataset
 
 log = logging.getLogger("daikon.web")
 
@@ -53,8 +54,9 @@ LIVRES = {"/api/login", "/manifest.json", "/sw.js", "/icon.svg", "/style.css",
 @app.middleware("http")
 async def exigir_login(request: Request, chamar):
     caminho = request.url.path
-    if caminho not in LIVRES and not _token_valido(
-            request.cookies.get("daikon_sessao", "")):
+    if (caminho not in LIVRES
+            and not caminho.startswith("/api/conector/")
+            and not _token_valido(request.cookies.get("daikon_sessao", ""))):
         if caminho.startswith("/api/") or caminho.startswith("/arquivos/"):
             return JSONResponse({"erro": "login_necessario"}, status_code=401)
     return await chamar(request)
@@ -361,6 +363,52 @@ def baixar_pdf(eid: int):
                         filename=nome_arquivo)
 
 
+# ------------------------------------------------ Conector da clínica (API)
+# O Conector roda no PC da clínica: entrega a worklist ao ultrassom e envia
+# as imagens recebidas para cá por HTTPS. Autentica por token próprio.
+
+def _conferir_token_conector(token: str) -> None:
+    cfg = config.carregar()
+    if not hmac.compare_digest(str(token or ""), str(cfg["token_conector"])):
+        raise HTTPException(401, "Token do conector inválido")
+
+
+@app.get("/api/conector/worklist")
+def conector_worklist(x_daikon_token: str = Header(default="")):
+    _conferir_token_conector(x_daikon_token)
+    return database.query("""
+        SELECT a.id, a.data, a.hora, a.accession, a.study_uid,
+               a.paciente_id, p.nome AS paciente_nome, p.nascimento, p.sexo,
+               pr.nome AS procedimento_nome, m.nome AS medico_nome
+        FROM agendamentos a
+        JOIN pacientes p ON p.id = a.paciente_id
+        LEFT JOIN procedimentos pr ON pr.id = a.procedimento_id
+        LEFT JOIN medicos m ON m.id = a.medico_id
+        WHERE a.status = 'agendado'
+        ORDER BY a.data, a.hora""")
+
+
+@app.post("/api/conector/imagem")
+async def conector_imagem(arquivo: UploadFile = File(...),
+                          x_daikon_token: str = Header(default="")):
+    _conferir_token_conector(x_daikon_token)
+    import io
+    from pydicom import dcmread
+    dados = await arquivo.read()
+    try:
+        ds = dcmread(io.BytesIO(dados))
+    except Exception:
+        raise HTTPException(400, "Arquivo DICOM inválido")
+    nova = registrar_dataset(ds)
+    return {"ok": True, "nova": nova}
+
+
+@app.get("/api/conector/ping")
+def conector_ping(x_daikon_token: str = Header(default="")):
+    _conferir_token_conector(x_daikon_token)
+    return {"ok": True, "servidor": "daikon"}
+
+
 # ------------------------------------------------------------- Configuração
 
 CHAVES_PUBLICAS = ("nome_clinica", "subtitulo_clinica", "endereco_clinica",
@@ -370,7 +418,9 @@ CHAVES_PUBLICAS = ("nome_clinica", "subtitulo_clinica", "endereco_clinica",
 @app.get("/api/config")
 def ler_config():
     cfg = config.carregar()
-    return {k: cfg[k] for k in CHAVES_PUBLICAS}
+    dados = {k: cfg[k] for k in CHAVES_PUBLICAS}
+    dados["token_conector"] = cfg["token_conector"]
+    return dados
 
 
 @app.put("/api/config")

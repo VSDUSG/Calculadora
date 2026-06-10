@@ -6,18 +6,15 @@ Serviços oferecidos ao aparelho de ultrassom:
   - C-FIND  (Modality Worklist)   : envia a lista de pacientes agendados
 """
 import logging
-import os
 import threading
-from datetime import datetime
 
-from pydicom import dcmread
 from pydicom.dataset import Dataset
 from pydicom.uid import generate_uid
 from pynetdicom import AE, evt, AllStoragePresentationContexts, ALL_TRANSFER_SYNTAXES
 from pynetdicom.sop_class import ModalityWorklistInformationFind, Verification
 
 from . import config, database
-from .imagens import gerar_png
+from .recebimento import registrar_dataset
 
 log = logging.getLogger("daikon.dicom")
 
@@ -114,72 +111,11 @@ def handle_find(event):
 
 # ---------------------------------------------------------------- C-STORE
 
-def _vincular_estudo(ds) -> int:
-    """Localiza/cria o estudo no banco e tenta vincular ao agendamento."""
-    study_uid = str(ds.StudyInstanceUID)
-    estudo = database.um("SELECT * FROM estudos WHERE study_uid = ?", (study_uid,))
-    if estudo:
-        return estudo["id"]
-
-    accession = str(getattr(ds, "AccessionNumber", "") or "")
-    agendamento = None
-    if accession:
-        agendamento = database.um(
-            "SELECT * FROM agendamentos WHERE accession = ?", (accession,))
-    if not agendamento:
-        agendamento = database.um(
-            "SELECT * FROM agendamentos WHERE study_uid = ?", (study_uid,))
-
-    nome = str(getattr(ds, "PatientName", "") or "").replace("^", " ").strip()
-    estudo_id = database.executar(
-        """INSERT INTO estudos (study_uid, agendamento_id, paciente_nome,
-               paciente_id_dicom, accession, descricao, data, hora)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (
-            study_uid,
-            agendamento["id"] if agendamento else None,
-            nome,
-            str(getattr(ds, "PatientID", "") or ""),
-            accession,
-            str(getattr(ds, "StudyDescription", "") or ""),
-            str(getattr(ds, "StudyDate", "") or ""),
-            str(getattr(ds, "StudyTime", "") or "")[:6],
-        ),
-    )
-    if agendamento and agendamento["status"] == "agendado":
-        database.executar(
-            "UPDATE agendamentos SET status = 'realizado' WHERE id = ?",
-            (agendamento["id"],))
-        log.info("Estudo %s vinculado ao agendamento #%s", study_uid, agendamento["id"])
-    return estudo_id
-
-
 def handle_store(event):
     try:
         ds = event.dataset
         ds.file_meta = event.file_meta
-        sop_uid = str(ds.SOPInstanceUID)
-        study_uid = str(ds.StudyInstanceUID)
-
-        pasta = os.path.join(config.DICOM_DIR, study_uid)
-        os.makedirs(pasta, exist_ok=True)
-        caminho_dcm = os.path.join(pasta, f"{sop_uid}.dcm")
-        ds.save_as(caminho_dcm, enforce_file_format=True)
-
-        estudo_id = _vincular_estudo(ds)
-
-        if database.um("SELECT id FROM imagens WHERE sop_uid = ?", (sop_uid,)):
-            return 0x0000  # reenvio da mesma imagem
-
-        caminho_png, frames = gerar_png(caminho_dcm, sop_uid)
-        numero = int(getattr(ds, "InstanceNumber", 0) or 0)
-        database.executar(
-            """INSERT INTO imagens (estudo_id, sop_uid, arquivo_dicom,
-                   arquivo_png, numero, frames)
-               VALUES (?,?,?,?,?,?)""",
-            (estudo_id, sop_uid, caminho_dcm, caminho_png or "", numero, frames),
-        )
-        log.info("Imagem recebida: estudo=%s instancia=%s", study_uid, numero)
+        registrar_dataset(ds)
         return 0x0000
     except Exception:
         log.exception("Erro ao receber imagem DICOM")

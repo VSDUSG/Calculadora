@@ -655,8 +655,20 @@ async function telaConfig() {
       <label>Porta DICOM</label>
       <input id="cf-porta" type="number" value="${c.porta_dicom}">
       <p style="font-size:13.5px;color:var(--texto-fraco);margin-top:8px">
-        💡 No ultrassom, use o IP do computador onde o Daikon está rodando,
-        com o AE Title e a porta acima.</p>
+        💡 No ultrassom, use o IP do computador onde o Daikon (ou o Conector)
+        está rodando, com o AE Title e a porta acima.</p>
+    </div>
+    <div class="cartao">
+      <b>Conector da clínica (quando o site está na internet)</b>
+      <p style="font-size:13.5px;color:var(--texto-fraco);margin-top:6px">
+        O programa <code>conector_clinica.py</code> roda no PC da clínica e
+        liga o ultrassom a este site. Na primeira execução ele pede o
+        endereço do site e este token:</p>
+      <label>Token do conector</label>
+      <input readonly value="${esc(c.token_conector || "")}"
+             onclick="this.select();document.execCommand('copy');avisar('Token copiado ✔')">
+      <p style="font-size:13.5px;color:var(--texto-fraco);margin-top:8px">
+        👆 Toque no token para copiar. Guarde-o como uma senha.</p>
     </div>
     <div class="cartao">
       <b>Segurança</b>

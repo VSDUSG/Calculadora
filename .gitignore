@@ -41,3 +41,8 @@ storage/
 config.json
 __pycache__/
 *.pyc
+
+# Conector da clínica: configuração local e fila de envio
+conector.json
+fila_envio/
+worklist_cache.json

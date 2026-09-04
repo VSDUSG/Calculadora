@@ -1,0 +1,12 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydicom>=3.0
+pynetdicom>=2.1
+pillow>=10.0
+numpy>=1.26
+reportlab>=4.0
+python-multipart>=0.0.9
+pylibjpeg>=2.0
+pylibjpeg-libjpeg>=2.0
+pylibjpeg-openjpeg>=2.0
+requests>=2.31

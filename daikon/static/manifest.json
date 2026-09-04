@@ -1,0 +1,12 @@
+{
+  "name": "Daikon — Ultrassom e Laudos",
+  "short_name": "Daikon",
+  "description": "Agenda, worklist DICOM, imagens de ultrassom e laudos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e7490",
+  "theme_color": "#0e7490",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

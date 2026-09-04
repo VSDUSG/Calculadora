@@ -1,0 +1,17 @@
+# Hospedagem do Daikon no Render.com — "Blueprint"
+# No Render: New + → Blueprint → conectar este repositório do GitHub.
+services:
+  - type: web
+    name: daikon
+    runtime: docker
+    plan: starter            # plano pago básico (necessário para o disco)
+    healthCheckPath: /
+    envVars:
+      - key: DAIKON_DADOS
+        value: /dados
+      - key: DAIKON_NUVEM
+        value: "1"
+    disk:
+      name: daikon-dados
+      mountPath: /dados
+      sizeGB: 10             # aumente conforme o volume de exames

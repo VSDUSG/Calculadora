@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e7490">
+<title>Daikon — Ultrassom</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="tela-login" class="login oculto">
+  <div class="login-caixa">
+    <div class="logo">🩻</div>
+    <h1>Daikon</h1>
+    <p>Sistema de ultrassom, agenda e laudos</p>
+    <input type="password" id="login-senha" placeholder="Senha" autocomplete="current-password">
+    <button class="btn primario" onclick="fazerLogin()">Entrar</button>
+    <div id="login-erro" class="erro"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app" class="oculto">
+  <header class="topo">
+    <span class="logo-mini">🩻 <b id="nome-clinica-topo">Daikon</b></span>
+    <nav class="nav-desktop">
+      <a href="#inicio" data-tela="inicio">Início</a>
+      <a href="#agenda" data-tela="agenda">Agenda</a>
+      <a href="#exames" data-tela="exames">Exames</a>
+      <a href="#cadastros" data-tela="cadastros">Cadastros</a>
+      <a href="#config" data-tela="config">Ajustes</a>
+    </nav>
+  </header>
+
+  <main id="conteudo"></main>
+
+  <nav class="nav-celular">
+    <a href="#inicio" data-tela="inicio"><span>🏠</span>Início</a>
+    <a href="#agenda" data-tela="agenda"><span>📅</span>Agenda</a>
+    <a href="#exames" data-tela="exames"><span>🖼️</span>Exames</a>
+    <a href="#cadastros" data-tela="cadastros"><span>📋</span>Cadastros</a>
+    <a href="#config" data-tela="config"><span>⚙️</span>Ajustes</a>
+  </nav>
+</div>
+
+<div id="modal-fundo" class="modal-fundo oculto" onclick="if(event.target===this)fecharModal()">
+  <div id="modal" class="modal"></div>
+</div>
+
+<div id="aviso" class="aviso oculto"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

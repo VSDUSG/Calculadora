@@ -7,6 +7,7 @@ Serviços oferecidos ao aparelho de ultrassom:
 """
 import logging
 import threading
+from datetime import datetime
 
 from pydicom.dataset import Dataset
 from pydicom.uid import generate_uid
@@ -27,6 +28,34 @@ def novo_study_uid() -> str:
 
 
 # ---------------------------------------------------------------- Worklist
+
+def _intervalo_data_worklist(valor) -> tuple[str | None, str | None]:
+    """Converte uma chave DA do MWL em limites ISO inclusivos.
+
+    Aceita uma data exata e os intervalos DICOM fechados ou abertos. Uma
+    chave vazia é *universal matching* e, portanto, não adiciona limites.
+    """
+    bruto = str(valor or "").strip()
+    if not bruto:
+        return None, None
+
+    partes = bruto.split("-")
+    if len(partes) > 2 or any(p and len(p) != 8 for p in partes):
+        raise ValueError(f"Data MWL inválida: {bruto!r}")
+
+    def para_iso(data: str) -> str | None:
+        if not data:
+            return None
+        return datetime.strptime(data, "%Y%m%d").date().isoformat()
+
+    if len(partes) == 1:
+        data = para_iso(partes[0])
+        return data, data
+
+    inicio, fim = para_iso(partes[0]), para_iso(partes[1])
+    if inicio and fim and inicio > fim:
+        raise ValueError(f"Intervalo MWL invertido: {bruto!r}")
+    return inicio, fim
 
 def _agendamento_para_dataset(ag: dict, cfg: dict) -> Dataset:
     """Converte um agendamento do banco em um item de resposta da Worklist."""
@@ -64,17 +93,15 @@ def _agendamento_para_dataset(ag: dict, cfg: dict) -> Dataset:
 
 def _consultar_worklist(identifier) -> list:
     """Busca agendamentos que casam com a consulta do aparelho."""
-    data_filtro = None
     try:
         sps_query = identifier.ScheduledProcedureStepSequence[0]
-        bruto = getattr(sps_query, "ScheduledProcedureStepStartDate", "") or ""
-        bruto = str(bruto).strip()
-        if bruto and "-" not in bruto and len(bruto) == 8:
-            data_filtro = f"{bruto[0:4]}-{bruto[4:6]}-{bruto[6:8]}"
-        elif "-" in bruto:  # intervalo "YYYYMMDD-YYYYMMDD": deixamos passar tudo
-            data_filtro = None
+        inicio, fim = _intervalo_data_worklist(
+            getattr(sps_query, "ScheduledProcedureStepStartDate", ""))
     except (AttributeError, IndexError):
-        pass
+        inicio, fim = None, None
+    except ValueError as exc:
+        log.warning("Consulta MWL recusada: %s", exc)
+        return []
 
     sql = """
         SELECT a.*, p.nome AS paciente_nome, p.nascimento, p.sexo,
@@ -86,9 +113,12 @@ def _consultar_worklist(identifier) -> list:
         WHERE a.status = 'agendado'
     """
     params = []
-    if data_filtro:
-        sql += " AND a.data = ?"
-        params.append(data_filtro)
+    if inicio:
+        sql += " AND a.data >= ?"
+        params.append(inicio)
+    if fim:
+        sql += " AND a.data <= ?"
+        params.append(fim)
     sql += " ORDER BY a.data, a.hora"
     return database.query(sql, params)
 

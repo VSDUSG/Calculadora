@@ -298,13 +298,43 @@ def baixar_imagem(iid: int):
 
 # -------------------------------------------------------------------- Laudos
 
+def _imagens_do_estudo(eid: int, imagens_ids) -> list[int]:
+    """Valida e normaliza as imagens selecionadas para um laudo."""
+    if imagens_ids is None:
+        return []
+    if not isinstance(imagens_ids, list):
+        raise HTTPException(400, "imagens_ids deve ser uma lista")
+
+    ids = []
+    try:
+        for valor in imagens_ids:
+            iid = int(valor)
+            if isinstance(valor, bool) or iid <= 0:
+                raise ValueError
+            if iid not in ids:
+                ids.append(iid)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "imagens_ids contém um identificador inválido")
+
+    if not ids:
+        return ids
+    marcadores = ",".join("?" for _ in ids)
+    encontradas = database.query(
+        f"SELECT id FROM imagens WHERE estudo_id = ? AND id IN ({marcadores})",
+        (eid, *ids))
+    ids_encontrados = {img["id"] for img in encontradas}
+    if any(iid not in ids_encontrados for iid in ids):
+        raise HTTPException(400, "Uma ou mais imagens não pertencem ao estudo")
+    return ids
+
 @app.post("/api/estudos/{eid}/laudo")
 def salvar_laudo(eid: int, d: dict = Body(...)):
     if not database.um("SELECT id FROM estudos WHERE id = ?", (eid,)):
         raise HTTPException(404, "Estudo não encontrado")
+    imagens_ids = _imagens_do_estudo(eid, d.get("imagens_ids", []))
     existente = database.um("SELECT id FROM laudos WHERE estudo_id = ?", (eid,))
     valores = (d.get("titulo", ""), d.get("texto", ""), d.get("medico_id"),
-               ",".join(str(i) for i in d.get("imagens_ids", [])),
+               ",".join(str(i) for i in imagens_ids),
                int(d.get("finalizado") or 0))
     if existente:
         database.executar(
@@ -344,7 +374,9 @@ def baixar_pdf(eid: int):
     pngs = []
     ids = [i for i in (laudo["imagens_ids"] or "").split(",") if i.strip()]
     for iid in ids:
-        img = database.um("SELECT arquivo_png FROM imagens WHERE id = ?", (iid,))
+        img = database.um(
+            "SELECT arquivo_png FROM imagens WHERE id = ? AND estudo_id = ?",
+            (iid, eid))
         if img and img["arquivo_png"]:
             pngs.append(img["arquivo_png"])
 

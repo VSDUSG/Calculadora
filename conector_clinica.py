@@ -18,6 +18,7 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime
 
 import requests
 from pydicom import dcmread
@@ -110,17 +111,36 @@ def _item_worklist(ag: dict) -> Dataset:
 def handle_find(event):
     agendamentos = baixar_worklist()
 
-    # respeita o filtro de data, se o aparelho mandar um
-    data_filtro = None
+    # Respeita datas exatas e intervalos DICOM (inclusive os abertos).
     try:
         sps = event.identifier.ScheduledProcedureStepSequence[0]
         bruto = str(getattr(sps, "ScheduledProcedureStepStartDate", "") or "").strip()
-        if bruto and "-" not in bruto and len(bruto) == 8:
-            data_filtro = f"{bruto[0:4]}-{bruto[4:6]}-{bruto[6:8]}"
+        partes = bruto.split("-") if bruto else []
+        if len(partes) > 2 or any(p and len(p) != 8 for p in partes):
+            raise ValueError(f"Data MWL inválida: {bruto!r}")
+
+        def para_iso(data):
+            return (datetime.strptime(data, "%Y%m%d").date().isoformat()
+                    if data else None)
+
+        if len(partes) == 1:
+            inicio = fim = para_iso(partes[0])
+        elif len(partes) == 2:
+            inicio, fim = para_iso(partes[0]), para_iso(partes[1])
+            if inicio and fim and inicio > fim:
+                raise ValueError(f"Intervalo MWL invertido: {bruto!r}")
+        else:
+            inicio = fim = None
     except (AttributeError, IndexError):
-        pass
-    if data_filtro:
-        agendamentos = [a for a in agendamentos if a["data"] == data_filtro]
+        inicio = fim = None
+    except ValueError as exc:
+        log.warning("Consulta MWL recusada: %s", exc)
+        agendamentos = []
+        inicio = fim = None
+    if inicio:
+        agendamentos = [a for a in agendamentos if a["data"] >= inicio]
+    if fim:
+        agendamentos = [a for a in agendamentos if a["data"] <= fim]
 
     log.info("Worklist pedida pelo ultrassom: %d paciente(s)", len(agendamentos))
     for ag in agendamentos:
